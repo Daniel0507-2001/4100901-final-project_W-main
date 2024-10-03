@@ -7,186 +7,188 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_PASSWORD 12
+#define MAX_PASSWORD 12  // Define el tamaño máximo de la contraseña
 
-// Counter for failed password attempts
+// Contador de intentos fallidos de contraseña
 uint8_t failed_counter = 0;
 
-// Current password and keypad buffer
-uint8_t password[MAX_PASSWORD] = "2001";
-uint8_t keypad_buffer[MAX_PASSWORD];
-ring_buffer_t keypad_rb;
+// Contraseña actual y buffer del teclado
+uint8_t password[MAX_PASSWORD] = "2001";  // Contraseña predeterminada
+uint8_t keypad_buffer[MAX_PASSWORD];      // Buffer donde se almacenan las teclas presionadas
+ring_buffer_t keypad_rb;                  // Ring buffer para gestionar las teclas del teclado
 
-// Variable to store the detected keypad event
+// Variable para almacenar el evento detectado del teclado
 extern volatile uint16_t keypad_event;
 
-// Function to get a single key press from the keypad
+// Función para obtener una sola tecla presionada del teclado
 static uint8_t lock_get_passkey(void)
 {
+    // Espera hasta que se detecte una tecla presionada
     while (ring_buffer_size(&keypad_rb) == 0) {
-        // Wait for key press
+        // Ejecuta el teclado para detectar teclas presionadas
         uint8_t key_pressed = keypad_run(&keypad_event);
         if (key_pressed != KEY_PRESSED_NONE) {
+            // Si se detecta una tecla, la almacena en el ring buffer
             ring_buffer_put(&keypad_rb, key_pressed);
         }
     }
 
-    // Retrieve and return the key pressed
+    // Recupera y devuelve la tecla presionada
     uint8_t key_pressed;
     ring_buffer_get(&keypad_rb, &key_pressed);
+
+    // Si se presiona '*' o '#', devuelve un código especial
     if (key_pressed == '*' || key_pressed == '#') {
-        return 0xFF; // Special code for '*' and '#' keys
+        return 0xFF;  // Código especial para las teclas '*' y '#'
     }
-    return key_pressed;
+
+    return key_pressed;  // Devuelve la tecla presionada
 }
 
-// Function to get a new password from the user
+// Función para obtener una nueva contraseña del usuario
 static uint8_t lock_get_password(void)
 {
-    uint8_t idx = 0;
-    uint8_t passkey = 0;
-    uint8_t new_password[MAX_PASSWORD];
-    memset(new_password, 0, MAX_PASSWORD);
-    uint8_t password_shadow[MAX_PASSWORD + 1]  = {'-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '\0'};
+    uint8_t idx = 0;               // Índice para el ingreso de la contraseña
+    uint8_t passkey = 0;           // Tecla presionada
+    uint8_t new_password[MAX_PASSWORD];   // Arreglo para almacenar la nueva contraseña
+    memset(new_password, 0, MAX_PASSWORD);  // Inicializa el arreglo de contraseña con ceros
+    uint8_t password_shadow[MAX_PASSWORD + 1]  = {'-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '\0'};  // Sombra para mostrar los caracteres ingresados
 
-    // Continue getting keys until '#' is pressed
+    // Continua obteniendo teclas hasta que se presione '#'
     while (passkey != 0xFF) {
-        // Display the password shadow on the GUI
+        // Muestra la sombra de la contraseña en la interfaz gráfica
         GUI_update_password(password_shadow);
 
-        // Get the key pressed and update the display
+        // Obtiene la tecla presionada y actualiza la pantalla
         passkey = lock_get_passkey();
-        password_shadow[idx] = '*';
-        new_password[idx++] = passkey;
+        password_shadow[idx] = '*';       // Muestra '*' en lugar de la contraseña real
+        new_password[idx++] = passkey;    // Almacena la tecla presionada en la nueva contraseña
         GUI_update_password(new_password);
 
-        // Delay to make the key presses visible on the GUI
+        // Retardo para hacer visible cada tecla en la interfaz gráfica
         HAL_Delay(200);
     }
 
-    // If a valid password is entered, update the password and GUI
+    // Si se ingresó una contraseña válida, actualiza la contraseña y la GUI
     if (idx > 1) {
-        memcpy(password, new_password, MAX_PASSWORD);
-        GUI_update_password_success();
-        printf("Password update success\n");
+        memcpy(password, new_password, MAX_PASSWORD);  // Copia la nueva contraseña al arreglo de contraseña
+        GUI_update_password_success();                 // Muestra un mensaje de éxito en la interfaz gráfica
+        printf("Password update success\n");           // Imprime un mensaje de éxito en la consola
     } else {
-        // If an invalid password is entered, display "Locked" on the GUI
+        // Si no se ingresó una contraseña válida, muestra la pantalla de "Locked"
         GUI_locked();
-        printf("Password update failed\n");
+        printf("Password update failed\n");            // Imprime un mensaje de fallo en la consola
         return 0;
     }
-    return 1; // Return success
+    return 1;  // Retorna éxito
 }
 
-// Function to validate the entered password
+// Función para validar la contraseña ingresada
 static uint8_t lock_validate_password(void)
 {
-    uint8_t sequence[MAX_PASSWORD];
-    uint8_t seq_len = ring_buffer_size(&keypad_rb);
+    uint8_t sequence[MAX_PASSWORD];    // Arreglo para almacenar la secuencia de teclas ingresadas
+    uint8_t seq_len = ring_buffer_size(&keypad_rb);  // Obtiene la longitud de la secuencia ingresada
 
-    // Retrieve the sequence from the keypad buffer
+    // Recupera la secuencia ingresada desde el buffer
     for (uint8_t idx = 0; idx < seq_len; idx++) {
         ring_buffer_get(&keypad_rb, &sequence[idx]);
     }
 
-    // Compare the entered sequence with the stored password
+    // Compara la secuencia ingresada con la contraseña almacenada
     if (memcmp(sequence, password, 4) == 0) {
-        printf("Password validation success\n");
-        return 1; // Password is valid
+        printf("Password validation success\n");  // Si es correcta, imprime éxito
+        return 1;  // La contraseña es válida
     }
-    printf("Password validation failed\n");
-    return 0; // Password is invalid
+    printf("Password validation failed\n");  // Si es incorrecta, imprime fallo
+    return 0;  // La contraseña es inválida
 }
 
-// Function to update the password if the validation is successful
+// Función para actualizar la contraseña si la validación es exitosa
 static void lock_update_password(void)
 {
     if (lock_validate_password() != 0) {
-        // If password is valid, initiate the password update process
+        // Si la contraseña es válida, inicia el proceso de actualización
         GUI_update_password_init();
         lock_get_password();
     } else {
-        // If password is invalid, display "Locked" on the GUI
+        // Si la contraseña es inválida, muestra la pantalla de "Locked"
         GUI_locked();
     }
 }
 
-
-
-// Función para encender el LED.
+// Función para encender el LED en el pin PA5
 void LED_SetHigh(void) {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); // Enciende el LED en PA5.
-
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);  // Enciende el LED
 }
 
-// Función para apagar el LED.
+// Función para apagar el LED en el pin PA5
 void LED_SetLow(void) {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // Apaga el LED en PA5.
-
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);  // Apaga el LED
 }
 
-// Function to handle the process of opening the lock
+// Función para manejar el proceso de abrir la cerradura
 static void lock_open_lock(void)
 {
     if (lock_validate_password() != 0) {
-        // If password is valid, display "Unlocked" on the GUI
+        // Si la contraseña es válida, muestra "Unlocked" en la interfaz gráfica
         GUI_unlocked();
         printf("Lock opened successfully (OPEN)\n");
 
-        // Enciende el LED en PA5 para indicar que está desbloqueado.
+        // Enciende el LED en PA5 para indicar que está desbloqueado
         LED_SetHigh();
     } else {
-        failed_counter++;
+        failed_counter++;  // Incrementa el contador de intentos fallidos
 
         if (failed_counter < 3) {
-            // If the password is incorrect, show "Failed" and wait for 3 seconds
+            // Si la contraseña es incorrecta, muestra "Failed" y espera 3 segundos
             GUI_Fail();
             printf("Failed attempt: %d\n", failed_counter);
             HAL_Delay(3 * 1000);
         } else {
-            // If the password is incorrect 3 times, show "Blocked" and wait for 10 seconds
+            // Si la contraseña es incorrecta 3 veces, muestra "Blocked" y espera 10 segundos
             GUI_Retry_Countdown();
             failed_counter = 0;
-            printf("Too many failed attempts, blocked for 60 seconds\n");
-            HAL_Delay(10 * 1000);  // Cambio de 60s a 10s de espera.
+            printf("Too many failed attempts, blocked for 10 seconds\n");
+            HAL_Delay(3 * 1000);  // Espera 3 segundos
         }
 
-        // Apaga el LED en PA5 para indicar que está bloqueado o falló la autenticación.
+        // Apaga el LED en PA5 para indicar que está bloqueado
         LED_SetLow();
 
-        // After the delay, display "Locked" on the GUI
+        // Después del retardo, muestra la pantalla de "Locked"
         GUI_locked();
         printf("Lock is now in LOCKED state\n");
     }
 }
 
-// Initialization function for the lock system
+// Función de inicialización del sistema de la cerradura
 void lock_init(void)
 {
-    // Initialize keypad ring buffer, GUI, etc.
+    // Inicializa el buffer de teclado, la interfaz gráfica, etc.
     ring_buffer_init(&keypad_rb, keypad_buffer, 12);
     GUI_init();
 }
 
-// Function to handle the sequence of keys pressed on the lock
+// Función para manejar la secuencia de teclas presionadas en la cerradura
 void lock_sequence_handler(uint8_t key)
 {
     if (key == '*') {
-        // If '*' is pressed, initiate the password update process
+        // Si se presiona '*', inicia el proceso de actualización de contraseña
         printf("Key pressed: *\n");
         lock_update_password();
     } else if (key == '#') {
-        // If '#' is pressed, attempt to open the lock
+        // Si se presiona '#', intenta abrir la cerradura
         printf("Key pressed: #\n");
         lock_open_lock();
     } else {
-        // If any other key is pressed, add it to the keypad buffer
+        // Si se presiona cualquier otra tecla, la agrega al buffer del teclado
         printf("Key pressed: %c\n", key);
         ring_buffer_put(&keypad_rb, key);
     }
 }
 
 /* USER CODE BEGIN 0 */
+// Redefinición de la función _write para enviar datos al puerto serie
 int _write(int file, char *ptr, int len)
 {
     for (int i = 0; i < len; i++) {
@@ -202,4 +204,3 @@ int _write(int file, char *ptr, int len)
     return len;
 }
 /* USER CODE END 0 */
-

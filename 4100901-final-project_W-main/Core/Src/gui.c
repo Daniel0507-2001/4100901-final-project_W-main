@@ -75,7 +75,7 @@ void GUI_Retry_Countdown(void)
     char buffer[20];  // Buffer para almacenar el texto a mostrar
     uint8_t seconds = 5;  // Número de segundos para la cuenta regresiva
 
-    // Bucle de cuenta regresiva de 30 segundos
+    // Bucle de cuenta regresiva de 5 segundos
     for (uint8_t i = seconds; i > 0; i--)
     {
     	BUZZER_ON();

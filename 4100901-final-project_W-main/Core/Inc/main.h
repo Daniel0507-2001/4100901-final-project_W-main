@@ -106,10 +106,6 @@ void Error_Handler(void);
 #define ROW_4_GPIO_Port GPIOB
 #define ROW_3_Pin LL_GPIO_PIN_5
 #define ROW_3_GPIO_Port GPIOB
-#define NET_TX_Pin LL_GPIO_PIN_6
-#define NET_TX_GPIO_Port GPIOB
-#define NET_RX_Pin LL_GPIO_PIN_7
-#define NET_RX_GPIO_Port GPIOB
 #define OLED_SCL_Pin LL_GPIO_PIN_8
 #define OLED_SCL_GPIO_Port GPIOB
 #define OLED_SDA_Pin LL_GPIO_PIN_9
